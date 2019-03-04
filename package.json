@@ -1,0 +1,22 @@
+{
+  "name": "midterm_bot",
+  "version": "1.0.0",
+  "description": "this is my midterm bot for NYU Dynamic Web Apps",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuvneeshM/Midterm_Bot.git"
+  },
+  "author": "Luvneesh Mugrai",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LuvneeshM/Midterm_Bot/issues"
+  },
+  "homepage": "https://github.com/LuvneeshM/Midterm_Bot#readme",
+  "dependencies": {
+    "twit": "^2.2.11"
+  }
+}
