@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/LuvneeshM/Midterm_Bot#readme",
   "dependencies": {
+    "fuzzyset.js": "0.0.8",
     "twit": "^2.2.11"
   }
 }
