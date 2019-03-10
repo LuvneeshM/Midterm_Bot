@@ -2,10 +2,15 @@ var Twit = require('twit')
 var config = require("./config.js")
 var fs = require('fs')
 var fuzzy = require("fuzzyset.js")
+const puppeteer = require('puppeteer')
+var crypto = require("crypto")
+
 
 var T = new Twit(config)
 var last_tweet_file_path = "last_tweet_text.txt"
+var P1DONE = false
 
+const IMGNAME = crypto.randomBytes(20).toString('hex') + ".png"
 const OPTION_GREET = "greet"
 const OPTION_HELP = "help"
 const OPTION_IMAGE = "image"
@@ -104,12 +109,56 @@ function analyzeTweet(text) {
 function tweetBackToUser_text(params){
 	T.post("statuses/update", params, function(err, data, response){
 		if(err){
-			console.log("Error in tweeting back to user text")
+			console.log("\tError in tweeting back to user text")
+			console.log("\t\t"+err.message)
 		}
 		else{
-			console.log("Tweeted " + params.status)
+			console.log("\tTweeted back to user")
 		}
 	})
+}
+
+function deleteImage(){
+	fs.stat(IMGNAME, function(err, stats){
+		if (err){
+			return
+		}
+		else{
+			fs.unlink(IMGNAME, function(err){
+				if (err) console.log(err)
+				else console.log("\tDeleted the image from disk")
+			})
+		}
+	})
+}
+
+function tweetBackToUser_img(reply_text, id_str){
+	var base64_content = fs.readFileSync(IMGNAME, { encoding: 'base64' })
+	T.post('media/upload', {media_data: base64_content}, 
+		function(err, data, response){
+			if (err){
+				console.log("\tCould not upload the image")
+			} else{
+				console.log("\tUploaded the image")
+				let params = {
+						status: reply_text, 
+						in_reply_to_status_id: id_str,
+						media_ids: new Array(data.media_id_string) 
+					}
+				T.post('statuses/update', params, function(err, data, response) {
+					if (err){
+						console.log('\tIt didnt tweet back the image')
+						console.log(err)
+					}
+					else{
+						console.log('\tTweeted back the image')
+					}
+					//delete img
+					deleteImage()
+				})
+			}
+		}
+	)
 }
 
 function writeToFile(list_of_words, fn){
@@ -150,18 +199,37 @@ function getSmarter(text){
 		fuzzyset_list[3].list_words.add(new_command)
 		writeToFile(fuzzyset_list[3].list_words, fuzzyset_list[3].filename)
 	}
-
-
 	return true
 }
 
-/*************
-* Part 1
-* Since it has been some time
-* since I have been turned on
-* I will go through my last 100 tweets
-* and respond to them with a picture
-**************/
+//https://github.com/GoogleChrome/puppeteer/blob/v1.4.0/docs/api.md
+async function googleImage(text){
+	const dirname = "./"
+	let tokens = text.split(" ")
+	if (tokens.length < 3)
+		return false
+	let query = tokens.slice(2).join(" ")
+	const googleUrl = `https://www.google.com/search?q=${query}&tbm=isch`
+	const browser = await puppeteer.launch({headless: true})
+	const page = await browser.newPage()
+	await page.goto(googleUrl)
+	const IMAGE_SELECTOR = '#rg_s > div > a > img'
+	
+	const svgImage = await page.$(IMAGE_SELECTOR)
+	if (svgImage == null || svgImage == undefined){
+		console.log("rip")
+		await browser.close()
+		return false
+	}
+	await svgImage.screenshot({
+	    path: IMGNAME,
+	    omitBackground: true,
+	  })
+
+	await browser.close()
+
+	return true
+}
 
 //encoding utf-8 to get a string
 function getLastTweet(){
@@ -186,6 +254,7 @@ function sleep(ms){
 		setTimeout(resolve,ms)
 	})
 }
+//bulk of coding for different options
 async function tweetBack(err, data, response) {
 	if (err){
 		console.log("err in tweetBack")
@@ -195,7 +264,7 @@ async function tweetBack(err, data, response) {
 		//we do not want to respond twice
 		let last_tweet = getLastTweet()
 		//now we will loop through the data
-		let i = 0;
+		let i = 0
 		while(i < data.length){
 			var tweet_obj = data[i]
 			var tweet_text = tweet_obj["text"].toLowerCase()
@@ -208,82 +277,100 @@ async function tweetBack(err, data, response) {
 			//tweet back based on their tweet
 			//check which option it is and perform action accordingly
 			response_option = analyzeTweet(tweet_text)
+
+			//USER TEACHES US SOMETHING
 			if (response_option == OPTION_TEACH){
 				console.log("time to get smarter")
 				let success = getSmarter(tweet_text)
 				if (success){
-					//DONE
 					let reply = "Thank you @" + tweet_obj["user"]["screen_name"] + "! Your contribution has helped me get smarter!"
 					let params = {
 						status: reply, 
 						in_reply_to_status_id: tweet_obj.id_str
 					}
-					console.log("reply learned something new")
+					console.log("\treply learned something new")
 					tweetBackToUser_text(params)
 				} else{
-					//DONE
 					let reply = "Thank you for trying to help me learn, but it seems i did not understand you, @" + tweet_obj["user"]["screen_name"]
 					let params = {
 						status: reply, 
 						in_reply_to_status_id: tweet_obj.id_str
 					}
-					console.log("failed to learned something new")
+					console.log("\tfailed to learned something new")
 					tweetBackToUser_text(params)
 				}
-
-			} else if (response_option == OPTION_IMAGE){
-				//TODO
+			} 
+			//USER WANTS AN IMAGE
+			else if (response_option == OPTION_IMAGE){
 				console.log("google search image and send image")
-
-
-
+				let success = await googleImage(tweet_text)
+				if (success){
+					console.log("\tgot the img")
+					reply_text = "@" + tweet_obj["user"]["screen_name"] + " Here is your image."
+					tweetBackToUser_img(reply_text, tweet_obj.id_str)
+				} else {
+					let reply = "@" + tweet_obj["user"]["screen_name"] + " I could not get you and image sorry"
+					let params = {
+						status: reply, 
+						in_reply_to_status_id: tweet_obj.id_str
+					}
+					tweetBackToUser_text(params)
+				}
 			}
+			//USER WANTS TO LEARN HOW TO USE BOT
 			else if (response_option == OPTION_HELP){
-				//TODO
-				console.log("tell user how to use me")
-
-
-
-
-			} else if (response_option == OPTION_GREET){
-				//DONE
+				console.log("telling user how to use me")
+				let reply = "@" + tweet_obj["user"]["screen_name"] + " After mentioning me, you can use a keyword to Greet, ask for an image, or teach me something." 
+				let params = {
+						status: reply, 
+						in_reply_to_status_id: tweet_obj.id_str
+					}
+				tweetBackToUser_text(params)
+				await sleep(50)
+				reply =  "@" + tweet_obj["user"]["screen_name"] + " To teach me something follow the format <Mention> <keyword like add or teach> : <category> : <new ways to recognize the category>\nCategories include: teaching, images, helping, greeting"
+				params = {
+						status: reply, 
+						in_reply_to_status_id: tweet_obj.id_str
+					}
+				tweetBackToUser_text(params)
+				await sleep(50)
+				reply = "@" + tweet_obj["user"]["screen_name"] + " For example:\n@ LM_BOT2 Yoo whats up will greet me\n@ LM_BOT2 add: Greeting : hola\n@ LM_BOT2 help\n@ LM_BOT2 image dogs"
+				params = {
+						status: reply, 
+						in_reply_to_status_id: tweet_obj.id_str
+					}
+				tweetBackToUser_text(params)
+			} 
+			//USER IS GREETING US
+			else if (response_option == OPTION_GREET){
+				console.log("replying greet")
 				let reply = GREETINGS[Math.floor(Math.random()*GREETINGS.length)] + " @" + tweet_obj["user"]["screen_name"] + "!" 
 				let params = {
 					status: reply, 
 					in_reply_to_status_id: tweet_obj.id_str
 				}
-				console.log("replying greet")
 				tweetBackToUser_text(params)
-			} else {
-				//DONE
+			} 
+			//I DONT UNDERSTAND THE USER
+			else {
+				console.log("user makes no sense, replying help")
 				let reply = "Tweet back to " + " @"+ tweet_obj["user"]["screen_name"] + " Sorry I dont understand you. You can try again with another @ mention and ask for help. Example: <Mention> help"
 				let params = {
 					status: reply, 
 					in_reply_to_status_id: tweet_obj.id_str
 				}
-				console.log("user makes no sense, replying help")
 				tweetBackToUser_text(params)
 			}
 
 			//small delay between tweets bot catches up to
-			await sleep(1)
-
+			await sleep(2000)
 			i += 1
 		}
+		P1DONE = true
+		updateLastTweetFile(data[0]["text"].toLowerCase())
 
-
-		// updateLastTweetFile(data[0]["text"].toLowerCase())
 	}
 }
-
-
-
-/**********
-* PART 2
-* live responces to @ mentions
-* now that we caught up with previous mentions 
-* that were from when offline
-**********/
 
 // var stream = T.stream("statuses/filter", {track: ["@LM_Bot2"]} );
 // stream.on('tweet', tweetBackStream);
@@ -292,25 +379,44 @@ async function tweetBack(err, data, response) {
 // 	console.log(tweet)
 // }
 
-// var stream = T.stream('statuses/filter', { track: '@LM_Bot2' })
- 
-// stream.on('tweet', function (tweet) {
-//   console.log(tweet)
-// })
+async function p1(){
+	T.get('statuses/mentions_timeline', {count: 2}, tweetBack)
+}
+function helper(data){
+	tweetBack(false, [data], false)
+}
+function p2(){
+	console.log("~~~~Entering Live Tweeting Mode Now~~~~")
+	var stream = T.stream('statuses/filter', { track: '@LM_Bot2' })
+	stream.on('tweet', helper)
 
-
-
-
+}
 
 /******
 * main
 ******/
-function main(){
+async function main(){
 	//set up
 	setup()
-	//part 1
-	T.get('statuses/mentions_timeline', {count: 10}, tweetBack)
-	//part 2
-
+	/*************
+	* Part 1
+	* Since it has been some time
+	* since I have been turned on
+	* I will go through my last 100 tweets
+	* and respond to them with a picture
+	**************/
+	p1()
+	await sleep(5000)
+	/**********
+	* PART 2
+	* live responces to @ mentions
+	* now that we caught up with previous mentions 
+	* that were from when offline
+	**********/
+	while(!P1DONE){
+		await sleep(500)
+	}
+	p2()
+	
 }
 main()
