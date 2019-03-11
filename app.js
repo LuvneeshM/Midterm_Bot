@@ -380,7 +380,7 @@ async function tweetBack(err, data, response) {
 // }
 
 async function p1(){
-	T.get('statuses/mentions_timeline', {count: 2}, tweetBack)
+	T.get('statuses/mentions_timeline', {count: 5}, tweetBack)
 }
 function helper(data){
 	tweetBack(false, [data], false)

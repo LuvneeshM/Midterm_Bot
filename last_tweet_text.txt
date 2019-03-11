@@ -1,1 +1,1 @@
-@lm_bot2 image h
+@lm_bot2 image blue circle
