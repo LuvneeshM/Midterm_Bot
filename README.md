@@ -29,6 +29,11 @@ NYU Dynamic Web Applications Midterm Bot!
 		* @LM_Bot2 add : helping : assist
 		* @LM_Bot2 add : Greeting : wassup
 
+## Node Packages used:
+* twit -> to connect to twitter
+* fuzzyset -> to determine typos
+* puppeteer -> to get images from the internet
+
 ## Fun Facts about the Bot
 I incorporated two modes: Catching Up and Live Streaming:
 * Catching Up: when the bot is first run, it will load up to the previous 5 tweets it missed and respond to them accordingly.
